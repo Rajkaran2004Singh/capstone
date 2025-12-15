@@ -27,7 +27,7 @@ except (KeyError, AttributeError):
         st.caption("Please ensure your `GOOGLE_API_KEY` is set in Streamlit Cloud secrets or as an environment variable.")
         st.stop()
 
-# Initialize Gemini Client 
+# Initialize Gemini Client (Corrected Block)
 try:
     # 1. Instantiate the Client object, passing the API key directly
     client = Client(api_key=api_key) 
@@ -38,7 +38,6 @@ try:
     model = client 
     
 except Exception as e:
-    # This block will now only catch genuine connection/key errors
     st.error(f"Error configuring Gemini API: {e}")
     st.stop()
 
@@ -93,11 +92,11 @@ Example of desired JSON output:
 def convert_df_to_excel(df):
     """Converts a pandas DataFrame to an Excel file in memory."""
     output = BytesIO()
-    # Ensure pandas uses the openpyxl engine
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Answer_Sheet_Summary')
     processed_data = output.getvalue()
     return processed_data
+
 def process_single_image(file_name, file_content):
     """
     Calls the Gemini API to extract data from a single image and flattens the result.
@@ -109,13 +108,11 @@ def process_single_image(file_name, file_content):
         img = Image.open(BytesIO(file_content))
         
         with st.spinner(f'Extracting data for {file_name}...'):
-            # CORRECT CALL: Synchronous request without 'stream' argument
+            # CORRECT SDK CALL: Synchronous request. Removed stream=False and resolve().
             response = model.models.generate_content(
                 model=MODEL_NAME, 
                 contents=[prompt_template, img]
             )
-            # FIX: Remove the .resolve() call which is no longer necessary/valid
-            # response.resolve() <-- REMOVED
             
             # Access the text content directly from the response object
             response_text = response.text.strip()
@@ -123,12 +120,17 @@ def process_single_image(file_name, file_content):
         json_match = re.search(r'```json\n(.*?)```', response_text, re.DOTALL)
 
         if json_match:
-            # ... (rest of parsing logic remains the same) ...
             json_string = json_match.group(1)
             try:
                 extracted_data = json.loads(json_string)
+                
+                # Extract and flatten the required keys
                 flat_data['roll_number'] = extracted_data.get('roll_number', 'N/A')
-                # ... (rest of the success handling) ...
+                flat_data['subject_code'] = extracted_data.get('subject_code', 'N/A')
+                flat_data['calculated_total_marks'] = extracted_data.get('calculated_total_marks')
+
+                for q, marks in extracted_data.get('question_marks', {}).items():
+                    flat_data[q] = marks
                 
                 st.success(f"✅ Extracted data for **{flat_data['roll_number']}**.")
             except json.JSONDecodeError:
@@ -205,7 +207,7 @@ def process_uploaded_files(uploaded_files):
 
     return all_results
 
-# --- VISUALIZATION FUNCTION ---
+# --- VISUALIZATION FUNCTION (Remains the same) ---
 
 def display_visualizations(df, question_cols, total_col):
     """Generates and displays visualizations using Matplotlib/Seaborn."""
@@ -267,7 +269,7 @@ def display_visualizations(df, question_cols, total_col):
     except Exception as e:
         st.warning(f"Could not generate Question Stats chart: {e}")
 
-# --- DISPLAY & DOWNLOAD FUNCTION ---
+# --- DISPLAY & DOWNLOAD FUNCTION (FIXED COLUMN ISSUE) ---
 
 def display_summary_and_download(all_results):
     """Aggregates results, displays summary, and provides download link."""
@@ -278,7 +280,26 @@ def display_summary_and_download(all_results):
     question_cols = [f'Q{i}' for i in range(1, 11)]
     total_col = 'calculated_total_marks'
 
-    # Convert mark columns to numeric for calculation
+    base_cols = ['roll_number', 'subject_code']
+    utility_cols = ['file_name', 'error']
+    
+    # Define the complete list of columns we expect in the final output
+    all_target_cols = base_cols + question_cols + [total_col] + utility_cols
+    
+    # --- FIX FOR MISSING COLUMNS IN EXCEL SHEET ---
+    # Guarantee that ALL mark columns and metadata columns exist in the DataFrame, 
+    # initializing them to 0.0 or 'N/A' if they were missed during extraction.
+    for col in all_target_cols:
+        if col not in df.columns:
+            if col in question_cols or col == total_col:
+                df[col] = 0.0 # Initialize mark columns to 0.0
+            elif col in base_cols:
+                df[col] = 'N/A' # Initialize metadata columns to N/A
+            else:
+                df[col] = '' # Initialize other columns
+    # ---------------------------------------------
+
+    # Convert mark columns to numeric for calculation (safer now that they are guaranteed to exist)
     mark_cols = [col for col in question_cols + [total_col] if col in df.columns]
     if mark_cols:
         for col in mark_cols:
@@ -289,13 +310,11 @@ def display_summary_and_download(all_results):
     # --- Top Performers Section ---
     if total_col in df.columns and not df.empty:
         top_n = 2
-        # Use nlargest to get the top N rows, keeping all ties
         top_performers = df.nlargest(top_n, total_col, keep='all').reset_index(drop=True)
 
         if not top_performers.empty and top_performers[total_col].max() > 0:
             st.subheader("🏆 Top Performers (Highest Total Marks)")
             
-            # Select and rename columns for a clean display
             display_cols = ['roll_number', 'subject_code', total_col]
             top_performers_display = top_performers[display_cols].rename(columns={
                 'roll_number': 'Roll Number',
@@ -303,10 +322,7 @@ def display_summary_and_download(all_results):
                 'calculated_total_marks': 'Total Marks'
             })
             
-            # Add a Rank column (adjusting for potential ties by using the total marks)
             top_performers_display['Rank'] = top_performers_display['Total Marks'].rank(method='min', ascending=False).astype(int)
-
-            # Reorder columns
             top_performers_display = top_performers_display[['Rank', 'Roll Number', 'Subject Code', 'Total Marks']]
             
             st.table(top_performers_display)
@@ -330,10 +346,8 @@ def display_summary_and_download(all_results):
         col2.metric("Highest Total Mark", f"{df[total_col].max():.2f} Marks")
 
     # --- Final DataFrame Preparation for Download ---
-    base_cols = ['roll_number', 'subject_code']
-    utility_cols = ['file_name', 'error']
-    required_columns = base_cols + question_cols + [total_col] + utility_cols
-    final_df = df.reindex(columns=[c for c in required_columns if c in df.columns])
+    # Use the guaranteed column order
+    final_df = df.reindex(columns=all_target_cols)
 
     column_mapping = {
         'calculated_total_marks': 'Total Marks',
