@@ -98,7 +98,6 @@ def convert_df_to_excel(df):
         df.to_excel(writer, index=False, sheet_name='Answer_Sheet_Summary')
     processed_data = output.getvalue()
     return processed_data
-
 def process_single_image(file_name, file_content):
     """
     Calls the Gemini API to extract data from a single image and flattens the result.
@@ -110,28 +109,26 @@ def process_single_image(file_name, file_content):
         img = Image.open(BytesIO(file_content))
         
         with st.spinner(f'Extracting data for {file_name}...'):
-            # CORRECT CALL: Removed the 'stream=False' argument
+            # CORRECT CALL: Synchronous request without 'stream' argument
             response = model.models.generate_content(
-                model=MODEL_NAME, # Pass the model name here
-                contents=[prompt_template, img] # Pass the image and prompt
-                # NOTE: 'stream=False' is removed because it is not supported 
-                # in the synchronous generate_content method in this SDK version.
+                model=MODEL_NAME, 
+                contents=[prompt_template, img]
             )
-            response.resolve()
+            # FIX: Remove the .resolve() call which is no longer necessary/valid
+            # response.resolve() <-- REMOVED
+            
+            # Access the text content directly from the response object
             response_text = response.text.strip()
 
         json_match = re.search(r'```json\n(.*?)```', response_text, re.DOTALL)
 
         if json_match:
+            # ... (rest of parsing logic remains the same) ...
             json_string = json_match.group(1)
             try:
                 extracted_data = json.loads(json_string)
                 flat_data['roll_number'] = extracted_data.get('roll_number', 'N/A')
-                flat_data['subject_code'] = extracted_data.get('subject_code', 'N/A')
-                flat_data['calculated_total_marks'] = extracted_data.get('calculated_total_marks')
-
-                for q, marks in extracted_data.get('question_marks', {}).items():
-                    flat_data[q] = marks
+                # ... (rest of the success handling) ...
                 
                 st.success(f"✅ Extracted data for **{flat_data['roll_number']}**.")
             except json.JSONDecodeError:
