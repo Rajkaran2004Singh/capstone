@@ -27,18 +27,18 @@ except (KeyError, AttributeError):
         st.caption("Please ensure your `GOOGLE_API_KEY` is set in Streamlit Cloud secrets or as an environment variable.")
         st.stop()
 
-# Initialize Gemini Client (CORRECTED BLOCK)
+# Initialize Gemini Client 
 try:
     # 1. Instantiate the Client object, passing the API key directly
     client = Client(api_key=api_key) 
     
     MODEL_NAME = 'gemini-2.5-flash'
     
-    # We assign the Client instance to the 'model' variable 
-    # for consistency with existing function logic.
+    # We assign the Client instance to the 'model' variable (which is the client)
     model = client 
     
 except Exception as e:
+    # This block will now only catch genuine connection/key errors
     st.error(f"Error configuring Gemini API: {e}")
     st.stop()
 
@@ -110,11 +110,12 @@ def process_single_image(file_name, file_content):
         img = Image.open(BytesIO(file_content))
         
         with st.spinner(f'Extracting data for {file_name}...'):
-            # CORRECT CALL: model (which is the client) calls .models.generate_content()
+            # CORRECT CALL: Removed the 'stream=False' argument
             response = model.models.generate_content(
                 model=MODEL_NAME, # Pass the model name here
-                contents=[prompt_template, img], # Pass the image and prompt
-                stream=False
+                contents=[prompt_template, img] # Pass the image and prompt
+                # NOTE: 'stream=False' is removed because it is not supported 
+                # in the synchronous generate_content method in this SDK version.
             )
             response.resolve()
             response_text = response.text.strip()
@@ -269,10 +270,10 @@ def display_visualizations(df, question_cols, total_col):
     except Exception as e:
         st.warning(f"Could not generate Question Stats chart: {e}")
 
-# --- DISPLAY & DOWNLOAD FUNCTION (Modified to include Top Performers and Vis) ---
+# --- DISPLAY & DOWNLOAD FUNCTION ---
 
 def display_summary_and_download(all_results):
-    """Aggregates results, calculates averages, displays summary, and provides download link."""
+    """Aggregates results, displays summary, and provides download link."""
     if not all_results:
         return
 
@@ -302,7 +303,7 @@ def display_summary_and_download(all_results):
             top_performers_display = top_performers[display_cols].rename(columns={
                 'roll_number': 'Roll Number',
                 'subject_code': 'Subject Code',
-                'calculated_total_marks': 'Total Marks' # Use the literal key
+                'calculated_total_marks': 'Total Marks'
             })
             
             # Add a Rank column (adjusting for potential ties by using the total marks)
