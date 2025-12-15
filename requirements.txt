@@ -1,0 +1,7 @@
+streamlit
+google-genai
+pillow
+pandas
+openpyxl
+matplotlib
+seaborn
