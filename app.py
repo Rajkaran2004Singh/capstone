@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+import google.genai as genai
 from PIL import Image
 from io import BytesIO
 import json
