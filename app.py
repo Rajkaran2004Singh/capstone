@@ -1,5 +1,6 @@
 import streamlit as st
-import google.genai as genai
+from google import genai
+from google.genai import Client # Correct import for the modern SDK
 from PIL import Image
 from io import BytesIO
 import json
@@ -22,22 +23,27 @@ except (KeyError, AttributeError):
     # Fallback for local testing if not using st.secrets
     api_key = os.getenv('GOOGLE_API_KEY')
     if not api_key:
-        # In a real deployed app, this stops execution if the secret isn't set.
         st.error("Gemini API Key not found.")
         st.caption("Please ensure your `GOOGLE_API_KEY` is set in Streamlit Cloud secrets or as an environment variable.")
         st.stop()
 
-# Initialize Gemini Client
+# Initialize Gemini Client (CORRECTED BLOCK)
 try:
-    genai.configure(api_key=api_key)
+    # 1. Instantiate the Client object, passing the API key directly
+    client = Client(api_key=api_key) 
+    
     MODEL_NAME = 'gemini-2.5-flash'
-    model = genai.GenerativeModel(MODEL_NAME)
+    
+    # We assign the Client instance to the 'model' variable 
+    # for consistency with existing function logic.
+    model = client 
+    
 except Exception as e:
     st.error(f"Error configuring Gemini API: {e}")
     st.stop()
 
 
-# The detailed prompt for the Gemini model (remains unchanged)
+# The detailed prompt for the Gemini model 
 prompt_template = """
 You are an expert at reading answer sheet cover pages and marking tables.
 Your task is to analyze the provided image and extract specific details.
@@ -96,7 +102,6 @@ def convert_df_to_excel(df):
 def process_single_image(file_name, file_content):
     """
     Calls the Gemini API to extract data from a single image and flattens the result.
-    (Function body remains the same as previous)
     """
     flat_data = {'file_name': file_name}
     st.write(f"🔍 Processing **{file_name}**...")
@@ -105,7 +110,12 @@ def process_single_image(file_name, file_content):
         img = Image.open(BytesIO(file_content))
         
         with st.spinner(f'Extracting data for {file_name}...'):
-            response = model.generate_content([prompt_template, img], stream=False)
+            # CORRECT CALL: model (which is the client) calls .models.generate_content()
+            response = model.models.generate_content(
+                model=MODEL_NAME, # Pass the model name here
+                contents=[prompt_template, img], # Pass the image and prompt
+                stream=False
+            )
             response.resolve()
             response_text = response.text.strip()
 
@@ -137,7 +147,7 @@ def process_single_image(file_name, file_content):
     return flat_data
 
 def process_uploaded_files(uploaded_files):
-    """Handles both individual images and a single ZIP file. (Function body remains the same)"""
+    """Handles both individual images and a single ZIP file."""
     all_results = []
     
     if len(uploaded_files) == 1 and uploaded_files[0].name.lower().endswith('.zip'):
@@ -197,7 +207,7 @@ def process_uploaded_files(uploaded_files):
 
     return all_results
 
-# --- NEW VISUALIZATION FUNCTION ---
+# --- VISUALIZATION FUNCTION ---
 
 def display_visualizations(df, question_cols, total_col):
     """Generates and displays visualizations using Matplotlib/Seaborn."""
@@ -212,14 +222,14 @@ def display_visualizations(df, question_cols, total_col):
         q_avg = df[[q for q in question_cols if q in df.columns]].mean()
         
         if not q_avg.empty:
-            plt.figure(figsize=(10, 5))
-            sns.barplot(x=q_avg.index, y=q_avg.values, palette="viridis")
-            plt.title('Average Marks Secured Per Question', fontsize=16)
-            plt.xlabel('Question Number', fontsize=12)
-            plt.ylabel('Average Mark', fontsize=12)
-            plt.xticks(rotation=0)
-            st.pyplot(plt)
-            plt.close()
+            fig, ax = plt.subplots(figsize=(10, 5))
+            sns.barplot(x=q_avg.index, y=q_avg.values, palette="viridis", ax=ax)
+            ax.set_title('Average Marks Secured Per Question', fontsize=16)
+            ax.set_xlabel('Question Number', fontsize=12)
+            ax.set_ylabel('Average Mark', fontsize=12)
+            ax.tick_params(axis='x', rotation=0)
+            st.pyplot(fig)
+            plt.close(fig)
             st.caption("This chart highlights the questions where the class performed best/worst, indicating question difficulty.")
     except Exception as e:
         st.warning(f"Could not generate Average Marks Per Question chart: {e}")
@@ -227,39 +237,39 @@ def display_visualizations(df, question_cols, total_col):
     # 2. Distribution of Total Marks (Histogram/KDE)
     try:
         if total_col in df.columns:
-            plt.figure(figsize=(10, 5))
-            sns.histplot(df[total_col], kde=True, bins=10, color='skyblue')
-            plt.axvline(df[total_col].mean(), color='red', linestyle='--', label=f'Avg: {df[total_col].mean():.2f}')
-            plt.title('Distribution of Total Marks', fontsize=16)
-            plt.xlabel('Total Marks', fontsize=12)
-            plt.ylabel('Number of Students', fontsize=12)
-            plt.legend()
-            st.pyplot(plt)
-            plt.close()
+            fig, ax = plt.subplots(figsize=(10, 5))
+            sns.histplot(df[total_col], kde=True, bins=10, color='skyblue', ax=ax)
+            ax.axvline(df[total_col].mean(), color='red', linestyle='--', label=f'Avg: {df[total_col].mean():.2f}')
+            ax.set_title('Distribution of Total Marks', fontsize=16)
+            ax.set_xlabel('Total Marks', fontsize=12)
+            ax.set_ylabel('Number of Students', fontsize=12)
+            ax.legend()
+            st.pyplot(fig)
+            plt.close(fig)
             st.caption("This distribution shows the overall grade curve. The red dashed line indicates the class average.")
     except Exception as e:
         st.warning(f"Could not generate Distribution of Total Marks chart: {e}")
 
-    # 3. Question Difficulty vs. Highest Marks (Scatter/Combined)
+    # 3. Question Difficulty vs. Highest Marks (Line Chart)
     try:
         q_stats = df[[q for q in question_cols if q in df.columns]].agg(['mean', 'max']).T
         q_stats.columns = ['Average', 'Highest']
         
         if not q_stats.empty:
-            plt.figure(figsize=(10, 5))
-            sns.lineplot(x=q_stats.index, y=q_stats['Highest'], marker='o', label='Highest Mark Secured', color='green')
-            sns.lineplot(x=q_stats.index, y=q_stats['Average'], marker='s', label='Average Mark Secured', color='orange')
-            plt.title('Highest vs. Average Marks Per Question', fontsize=16)
-            plt.xlabel('Question Number', fontsize=12)
-            plt.ylabel('Marks', fontsize=12)
-            plt.legend()
-            st.pyplot(plt)
-            plt.close()
+            fig, ax = plt.subplots(figsize=(10, 5))
+            sns.lineplot(x=q_stats.index, y=q_stats['Highest'], marker='o', label='Highest Mark Secured', color='green', ax=ax)
+            sns.lineplot(x=q_stats.index, y=q_stats['Average'], marker='s', label='Average Mark Secured', color='orange', ax=ax)
+            ax.set_title('Highest vs. Average Marks Per Question', fontsize=16)
+            ax.set_xlabel('Question Number', fontsize=12)
+            ax.set_ylabel('Marks', fontsize=12)
+            ax.legend()
+            st.pyplot(fig)
+            plt.close(fig)
             st.caption("This plot compares the best possible score with the class average, showing the gap in performance.")
     except Exception as e:
         st.warning(f"Could not generate Question Stats chart: {e}")
 
-# --- DISPLAY & DOWNLOAD FUNCTION (Modified to include Vis) ---
+# --- DISPLAY & DOWNLOAD FUNCTION (Modified to include Top Performers and Vis) ---
 
 def display_summary_and_download(all_results):
     """Aggregates results, calculates averages, displays summary, and provides download link."""
@@ -278,6 +288,37 @@ def display_summary_and_download(all_results):
 
     st.header("📊 Results Summary & Analysis")
     
+    # --- Top Performers Section ---
+    if total_col in df.columns and not df.empty:
+        top_n = 2
+        # Use nlargest to get the top N rows, keeping all ties
+        top_performers = df.nlargest(top_n, total_col, keep='all').reset_index(drop=True)
+
+        if not top_performers.empty and top_performers[total_col].max() > 0:
+            st.subheader("🏆 Top Performers (Highest Total Marks)")
+            
+            # Select and rename columns for a clean display
+            display_cols = ['roll_number', 'subject_code', total_col]
+            top_performers_display = top_performers[display_cols].rename(columns={
+                'roll_number': 'Roll Number',
+                'subject_code': 'Subject Code',
+                'calculated_total_marks': 'Total Marks' # Use the literal key
+            })
+            
+            # Add a Rank column (adjusting for potential ties by using the total marks)
+            top_performers_display['Rank'] = top_performers_display['Total Marks'].rank(method='min', ascending=False).astype(int)
+
+            # Reorder columns
+            top_performers_display = top_performers_display[['Rank', 'Roll Number', 'Subject Code', 'Total Marks']]
+            
+            st.table(top_performers_display)
+        
+        elif top_performers[total_col].max() == 0:
+             st.info("The extracted total marks are all zero, skipping top performer display.")
+        
+        else:
+            st.info("Not enough successful extractions to determine top performers.")
+
     # 1. Call Visualizations
     display_visualizations(df, question_cols, total_col)
     
@@ -290,7 +331,7 @@ def display_summary_and_download(all_results):
         col1.metric("Overall Class Average", f"{total_avg:.2f} Marks")
         col2.metric("Highest Total Mark", f"{df[total_col].max():.2f} Marks")
 
-    # --- Final DataFrame Preparation ---
+    # --- Final DataFrame Preparation for Download ---
     base_cols = ['roll_number', 'subject_code']
     utility_cols = ['file_name', 'error']
     required_columns = base_cols + question_cols + [total_col] + utility_cols
@@ -308,7 +349,7 @@ def display_summary_and_download(all_results):
 
     final_df = final_df.rename(columns=column_mapping)
     
-    st.subheader("Extracted Data Table")
+    st.subheader("Extracted Data Table (Full Detail)")
     st.dataframe(final_df, use_container_width=True)
 
     # --- Download Section ---
@@ -335,16 +376,15 @@ def main():
     )
 
     st.title("🤖 AI-Powered Answer Sheet & Mark Extractor")
-    st.markdown("Upload answer sheet cover pages (JPG/PNG) or a single ZIP file. Gemini will extract the marks and generate performance charts.")
+    st.markdown("Upload answer sheet cover pages (JPG/PNG) or a single ZIP file. Gemini will extract the marks, rank performers, and generate performance charts.")
     
-    # Sidebar remains the same...
     st.sidebar.header("Instructions")
     st.sidebar.markdown(
         """
         1.  **Prepare Files:** Ensure your answer sheet images are clear (JPG/PNG).
         2.  **Upload:** Use the uploader below to select multiple images or a single ZIP file.
         3.  **Process:** Click the 'Start Processing' button.
-        4.  **Review:** Examine the performance charts and the extracted data table.
+        4.  **Review:** Examine the Top Performers, performance charts, and the full data table.
         5.  **Download:** Download the final results as an Excel file.
         """
     )
