@@ -1,6 +1,6 @@
 import streamlit as st
 from google import genai
-from google.genai import Client # Correct import for the modern SDK
+from google.genai import Client 
 from PIL import Image
 from io import BytesIO
 import json
@@ -27,14 +27,11 @@ except (KeyError, AttributeError):
         st.caption("Please ensure your `GOOGLE_API_KEY` is set in Streamlit Cloud secrets or as an environment variable.")
         st.stop()
 
-# Initialize Gemini Client (Corrected Block)
+# Initialize Gemini Client 
 try:
-    # 1. Instantiate the Client object, passing the API key directly
     client = Client(api_key=api_key) 
     
     MODEL_NAME = 'gemini-2.5-flash'
-    
-    # We assign the Client instance to the 'model' variable (which is the client)
     model = client 
     
 except Exception as e:
@@ -108,13 +105,12 @@ def process_single_image(file_name, file_content):
         img = Image.open(BytesIO(file_content))
         
         with st.spinner(f'Extracting data for {file_name}...'):
-            # CORRECT SDK CALL: Synchronous request. Removed stream=False and resolve().
+            # Correct SDK call
             response = model.models.generate_content(
                 model=MODEL_NAME, 
                 contents=[prompt_template, img]
             )
             
-            # Access the text content directly from the response object
             response_text = response.text.strip()
 
         json_match = re.search(r'```json\n(.*?)```', response_text, re.DOTALL)
@@ -207,7 +203,7 @@ def process_uploaded_files(uploaded_files):
 
     return all_results
 
-# --- VISUALIZATION FUNCTION (Remains the same) ---
+# --- VISUALIZATION FUNCTION ---
 
 def display_visualizations(df, question_cols, total_col):
     """Generates and displays visualizations using Matplotlib/Seaborn."""
@@ -269,7 +265,7 @@ def display_visualizations(df, question_cols, total_col):
     except Exception as e:
         st.warning(f"Could not generate Question Stats chart: {e}")
 
-# --- DISPLAY & DOWNLOAD FUNCTION (FIXED COLUMN ISSUE) ---
+# --- DISPLAY & DOWNLOAD FUNCTION ---
 
 def display_summary_and_download(all_results):
     """Aggregates results, displays summary, and provides download link."""
@@ -282,13 +278,9 @@ def display_summary_and_download(all_results):
 
     base_cols = ['roll_number', 'subject_code']
     utility_cols = ['file_name', 'error']
-    
-    # Define the complete list of columns we expect in the final output
     all_target_cols = base_cols + question_cols + [total_col] + utility_cols
     
-    # --- FIX FOR MISSING COLUMNS IN EXCEL SHEET ---
-    # Guarantee that ALL mark columns and metadata columns exist in the DataFrame, 
-    # initializing them to 0.0 or 'N/A' if they were missed during extraction.
+    # Guarantee that ALL mark columns and metadata columns exist in the DataFrame
     for col in all_target_cols:
         if col not in df.columns:
             if col in question_cols or col == total_col:
@@ -297,9 +289,8 @@ def display_summary_and_download(all_results):
                 df[col] = 'N/A' # Initialize metadata columns to N/A
             else:
                 df[col] = '' # Initialize other columns
-    # ---------------------------------------------
 
-    # Convert mark columns to numeric for calculation (safer now that they are guaranteed to exist)
+    # Convert mark columns to numeric for calculation 
     mark_cols = [col for col in question_cols + [total_col] if col in df.columns]
     if mark_cols:
         for col in mark_cols:
@@ -381,26 +372,19 @@ def display_summary_and_download(all_results):
 # --- Streamlit App Layout ---
 
 def main():
+    # Removed initial_sidebar_state="expanded" from set_page_config, 
+    # but the sidebar content is removed below.
     st.set_page_config(
         page_title="Gemini Answer Sheet Processor",
-        layout="wide",
-        initial_sidebar_state="expanded"
+        layout="wide"
     )
 
     st.title("🤖 AI-Powered Answer Sheet & Mark Extractor")
     st.markdown("Upload answer sheet cover pages (JPG/PNG) or a single ZIP file. Gemini will extract the marks, rank performers, and generate performance charts.")
     
-    st.sidebar.header("Instructions")
-    st.sidebar.markdown(
-        """
-        1.  **Prepare Files:** Ensure your answer sheet images are clear (JPG/PNG).
-        2.  **Upload:** Use the uploader below to select multiple images or a single ZIP file.
-        3.  **Process:** Click the 'Start Processing' button.
-        4.  **Review:** Examine the Top Performers, performance charts, and the full data table.
-        5.  **Download:** Download the final results as an Excel file.
-        """
-    )
-    st.sidebar.info("Powered by Google's Gemini API for advanced image analysis (OCR & Table Extraction).")
+    # --- REMOVED INSTRUCTION SIDEBAR ---
+    # The st.sidebar code block has been completely deleted here.
+    # ---
 
     # --- File Uploader ---
     uploaded_files = st.file_uploader(
