@@ -23,8 +23,8 @@ except (KeyError, AttributeError):
     # Fallback for local testing if not using st.secrets
     api_key = os.getenv('GOOGLE_API_KEY')
     if not api_key:
-        st.error("Gemini API Key not found.")
-        st.caption("Please ensure your `GOOGLE_API_KEY` is set in Streamlit Cloud secrets or as an environment variable.")
+        st.error("Error 1.")
+        st.caption("Error 2")
         st.stop()
 
 # Initialize Gemini Client 
@@ -128,13 +128,13 @@ def process_single_image(file_name, file_content):
                 for q, marks in extracted_data.get('question_marks', {}).items():
                     flat_data[q] = marks
                 
-                st.success(f"✅ Extracted data for **{flat_data['roll_number']}**.")
+                st.success(f" Extracted data for **{flat_data['roll_number']}**.")
             except json.JSONDecodeError:
                 flat_data['error'] = 'Invalid JSON output from model.'
-                st.error(f"❌ JSON Decode Error for {file_name}.")
+                st.error(f" JSON Decode Error for {file_name}.")
         else:
             flat_data['error'] = 'No JSON block found in model response.'
-            st.warning(f"⚠️ Could not find a JSON block in the response for {file_name}.")
+            st.warning(f" Could not find a JSON block in the response for {file_name}.")
 
     except Exception as e:
         st.error(f"An error occurred while processing {file_name}: {e}")
@@ -379,8 +379,8 @@ def main():
         layout="wide"
     )
 
-    st.title("🤖 AI-Powered Answer Sheet & Mark Extractor")
-    st.markdown("Upload answer sheet cover pages (JPG/PNG) or a single ZIP file. Gemini will extract the marks, rank performers, and generate performance charts.")
+    st.title("AI-Powered Answer Sheet & Mark Extractor")
+    st.markdown("Upload answer sheet cover pages (JPG/PNG) or a single ZIP file.")
     
     # --- REMOVED INSTRUCTION SIDEBAR ---
     # The st.sidebar code block has been completely deleted here.
